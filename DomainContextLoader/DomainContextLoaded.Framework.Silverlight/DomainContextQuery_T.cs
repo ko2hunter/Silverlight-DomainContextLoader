@@ -83,7 +83,7 @@ namespace DomainContextLoader.Framework.QueryLoader
             _completedCallback = completedCallback;
 
             Complete = false;
-
+            Running = true;
             // Query the DomainContext with the parameters specified by this current DomainContextQuery.
             // Use our own LoadOperation method callback, so that the completedCallback action can be notified upon completion
             Context.Load(Query, LoadBehaviour, OnQueryLoadCompleted, UserStateParam);
@@ -108,6 +108,8 @@ namespace DomainContextLoader.Framework.QueryLoader
             {
                 _completedCallback.Invoke(this);
             }
+
+            Running = false;
         }
     }
 }

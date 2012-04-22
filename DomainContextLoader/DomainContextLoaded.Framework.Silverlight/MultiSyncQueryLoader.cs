@@ -21,6 +21,11 @@ namespace DomainContextLoader.Framework.QueryLoader
     public class MultiSyncQueryLoader
     {
         /// <summary>
+        /// Locking field for the threads to access the query collection
+        /// </summary>
+        private string _queryLockingString = "LOCKED";
+
+        /// <summary>
         /// Occurs when the Domain Context Queries are completed, whether asyncronously or syncronously.
         /// </summary>
         public event Action Completed;
@@ -40,7 +45,7 @@ namespace DomainContextLoader.Framework.QueryLoader
         /// The default load behaviour used when the load behaviour is not
         /// specified by the method.
         /// </summary>
-        private LoadBehavior _defaultLoadBehaviour  = LoadBehavior.RefreshCurrent;
+        private LoadBehavior _defaultLoadBehaviour = LoadBehavior.RefreshCurrent;
 
         /// <summary>
         /// Gets or sets the default domain context.
@@ -77,7 +82,7 @@ namespace DomainContextLoader.Framework.QueryLoader
                 _defaultLoadBehaviour = value;
             }
         }
-        
+
         /// <summary>
         /// Initializes a new instance of the <see cref="MultiSyncQueryLoader"/> class.
         /// </summary>
@@ -122,7 +127,11 @@ namespace DomainContextLoader.Framework.QueryLoader
             where T : Entity
         {
             var domainQuery = new DomainContextQuery<T>(context, query, loadBehavior, callback, userStateParam);
-            _queries.Add(domainQuery);
+
+            lock (_queryLockingString)
+            {
+                _queries.Add(domainQuery);
+            }
         }
 
         /// <summary>
@@ -141,8 +150,7 @@ namespace DomainContextLoader.Framework.QueryLoader
                 throw new System.NullReferenceException("DomainContext");
             }
 
-            var domainQuery = new DomainContextQuery<T>(DefaultDomainContext, query, loadBehavior, callback, userStateParam);
-            _queries.Add(domainQuery);
+            this.AddQuery(DefaultDomainContext, query, loadBehavior, callback, userStateParam);
         }
 
         /// <summary>
@@ -160,10 +168,9 @@ namespace DomainContextLoader.Framework.QueryLoader
                 throw new System.NullReferenceException("DomainContext");
             }
 
-            var domainQuery = new DomainContextQuery<T>(DefaultDomainContext, query, DefaultLoadBehaviour, callback, userStateParam);
-            _queries.Add(domainQuery);
+            this.AddQuery(query, DefaultLoadBehaviour, callback, userStateParam);
         }
-        
+
         /// <summary>
         /// Adds the DomainContext and required EntityQuery using the default domain context
         /// </summary>
@@ -182,6 +189,16 @@ namespace DomainContextLoader.Framework.QueryLoader
         /// </summary>
         public void RunSync()
         {
+            lock (_queryLockingString)
+            {
+                DomainContextQuery query = _queries.FirstOrDefault(a => a.Running == true); // Any currently running
+
+                if (query != null)
+                {
+                    return; // Currently still within a running query. Probably added some more to the end.
+                }
+            }
+
             SyncCallback();
         }
 
@@ -196,7 +213,13 @@ namespace DomainContextLoader.Framework.QueryLoader
                 OnCompleted();
             }
 
-            _queries.ForEach(a => a.Run(AsyncCallback));
+            lock (_queryLockingString)
+            {
+                foreach (var query in _queries.Where(a => a.Running == false && a.Complete == false))
+                {
+                    query.Run(AsyncCallback);
+                }
+            }
         }
 
         /// <summary>
@@ -210,9 +233,12 @@ namespace DomainContextLoader.Framework.QueryLoader
                 throw new Exception("Async Query Object cannot be null in an Async Callback");
             }
 
-            if (_queries.FirstOrDefault(a=>a.Complete == false) == null)
+            lock (_queryLockingString)
             {
-                OnCompleted();
+                if (_queries.Where(a => a.Running == true).FirstOrDefault(a => a.Complete == false) == null)
+                {
+                    OnCompleted();
+                }
             }
         }
 
@@ -221,14 +247,18 @@ namespace DomainContextLoader.Framework.QueryLoader
         /// </summary>
         private void SyncCallback()
         {
-            DomainContextQuery query = _queries.FirstOrDefault(a => a.Complete == false);
-            if (query == null)
+            lock (_queryLockingString)
             {
-                OnCompleted();
-                return;
-            }
+                DomainContextQuery query = _queries.FirstOrDefault(a => a.Complete == false);
 
-            query.Run(SyncCallback);
+                if (query == null)
+                {
+                    OnCompleted(); // None left to run.
+                    return;
+                }
+
+                query.Run(SyncCallback);
+            }
         }
 
         /// <summary>

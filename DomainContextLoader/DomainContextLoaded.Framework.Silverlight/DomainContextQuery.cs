@@ -18,10 +18,16 @@ namespace DomainContextLoader.Framework.QueryLoader
     internal abstract class DomainContextQuery
     {
         /// <summary>
-        /// Gets or sets a value indicating whether this <see cref="DomainContextQuery&lt;T&gt;"/> is complete.
+        /// Gets or sets a value indicating whether this <see cref="DomainContextQuery"/> is complete.
         /// </summary>
         /// <value><c>true</c> if complete; otherwise, <c>false</c>.</value>
         public bool Complete { get; protected set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this <see cref="DomainContextQuery"/> is running.
+        /// </summary>
+        /// <value><c>true</c> if running; otherwise, <c>false</c>.</value>
+        public bool Running { get; protected set; }
 
         /// <summary>
         /// Gets or sets the DomainContext that is to be queried.
